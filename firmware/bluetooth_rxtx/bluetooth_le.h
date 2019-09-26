@@ -104,6 +104,8 @@ u32 btle_crcgen_lut(u32 crc_init, u8 *data, int len);
 void le_dewhiten(uint8_t *data, unsigned size, unsigned channel);
 void le_parse_channel_map(uint8_t *channel_map, le_channel_remapping_t *remapping);
 uint8_t le_map_channel(uint8_t channel_idx, le_channel_remapping_t *remapping);
+//MYSTUFF
+u16 btle_next_hop_afh(le_state_t *le, uint8_t cutoff);
 
 static const u32 whitening_word[40][12] = {
 	{ 0xc3bcb240, 0x5f4a371f, 0x9a9cf685, 0x44c5d6c1, 0xe1de5920, 0xafa51b8f,

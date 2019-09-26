@@ -142,5 +142,9 @@ int cmd_ego(struct libusb_device_handle* devh, int mode);
 int cmd_afh(struct libusb_device_handle* devh);
 int cmd_hop(struct libusb_device_handle* devh);
 int cmd_cancel_follow(struct libusb_device_handle* devh);
+//MYSTUFF
+int cmd_jam_channel_mode(struct libusb_device_handle* devh, int channel);
+int cmd_btle_jam(struct libusb_device_handle* devh, u8 *mac_address);
+int cmd_btle_sniffing_afh(struct libusb_device_handle* devh, uint8_t cutoff);
 
 #endif /* __UBERTOOTH_CONTROL_H__ */

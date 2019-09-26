@@ -112,6 +112,10 @@ enum ubertooth_usb_commands {
 	UBERTOOTH_FIX_CLOCK_DRIFT    = 69,
 	UBERTOOTH_CANCEL_FOLLOW      = 70,
 	UBERTOOTH_LE_SET_ADV_DATA    = 71,
+
+	//MYSTUFF
+	UBERTOOTH_JAM_CHANNEL_MODE	 = 72,
+	UBERTOOTH_LE_SNIFFING_AFH	 = 73,
 };
 
 // maximum adv data len: 32 - (2 + 6 + 3)
@@ -121,6 +125,12 @@ enum jam_modes {
 	JAM_NONE       = 0,
 	JAM_ONCE       = 1,
 	JAM_CONTINUOUS = 2,
+};
+
+//MYSTUFF
+enum jam_channel_modes {
+	JAM_CHANNEL_OFF = 0,
+	JAM_CHANNEL_ON = 0,
 };
 
 enum modulations {
@@ -147,6 +157,8 @@ enum hop_mode {
 	HOP_BTLE      = 3,
 	HOP_DIRECT    = 4,
 	HOP_AFH       = 5,
+	//MYSTUFF
+	HOP_BTLE_AFH  = 6,
 };
 
 enum usb_pkt_status {

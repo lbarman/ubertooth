@@ -33,6 +33,22 @@ u16 btle_next_hop(le_state_t *le)
 	return phys;
 }
 
+//MYSTUFF
+/**
+* This BLE AFH remapping can only be used for a channel map where a lower part consists completely of used channels and 
+* the rest of channels is unused.
+*/
+u16 btle_next_hop_afh(le_state_t *le, uint8_t cutoff)
+{
+	//specification of AFH-Remapping for Channel Selection Algorithm #1: BLE Spec SEction 4.5.8.2
+	//in our case: channels [0, cutoff -1] are used, channels [cutoff, 36] are unused
+	// so we need to remap the channels higher than cutoff to used channels
+	u16 phys = btle_channel_index_to_phys((le->channel_idx)  % cutoff);
+	le->channel_idx = (le->channel_idx + le->channel_increment) % 37;
+	
+	return phys;
+}
+
 // calculate channel index from physical channel
 // channel is in range [2402, 2480]
 uint8_t btle_channel_index(uint16_t channel) {

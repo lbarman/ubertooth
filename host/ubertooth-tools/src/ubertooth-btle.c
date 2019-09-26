@@ -114,6 +114,7 @@ static void usage(void)
 	printf("\t-f follow connections\n");
 	printf("\t-n don't follow, only print advertisements\n");
 	printf("\t-p promiscuous: sniff active connections\n");
+	printf("\t-F<cutoff> experimental: follow connections with a channel map divided in used/unused. cutoff is the number of used channels/the channel index of the lowest unused channel. \n");
 	printf("\n");
 	printf("\t-a[address] get/set access address (example: -a8e89bed6)\n");
 	printf("\t-s<address> faux slave mode, using MAC addr (example: -s22:44:66:88:aa:cc)\n");
@@ -123,6 +124,8 @@ static void usage(void)
 	printf("    Interference (use with -f or -p):\n");
 	printf("\t-i interfere with one connection and return to idle\n");
 	printf("\t-I interfere continuously\n");
+	//MYSTUFF
+	printf("\t-g<n> experimental jamming mode\n");
 	printf("\n");
 	printf("    Data source:\n");
 	printf("\t-U<0-7> set ubertooth device to use\n");
@@ -135,6 +138,7 @@ static void usage(void)
 	printf("\t-v[01] verify CRC mode, get status or enable/disable\n");
 	printf("\t-x<n> allow n access address offenses (default 32)\n");
 
+
 	printf("\nIf an input file is not specified, an Ubertooth device is used for live capture.\n");
 	printf("In get/set mode no capture occurs.\n");
 }
@@ -143,6 +147,7 @@ int main(int argc, char *argv[])
 {
 	int opt;
 	int do_follow, do_no_follow, do_promisc;
+
 	int do_get_aa, do_set_aa;
 	int do_crc;
 	int do_adv_index;
@@ -150,6 +155,7 @@ int main(int argc, char *argv[])
 	int do_target;
 	enum jam_modes jam_mode = JAM_NONE;
 	int ubertooth_device = -1;
+		
 	ubertooth_t* ut = ubertooth_init();
 
 	btle_options cb_opts = { .allowed_access_address_errors = 32 };
@@ -160,12 +166,18 @@ int main(int argc, char *argv[])
 	uint8_t mac_mask = 0;
 
 	do_follow = do_no_follow = do_promisc = 0;
+
 	do_get_aa = do_set_aa = 0;
 	do_crc = -1; // 0 and 1 mean set, 2 means get
 	do_adv_index = 37;
 	do_slave_mode = do_target = 0;
 
-	while ((opt=getopt(argc,argv,"a::r:hfnpU:v::A:s:t:x:c:q:jJiI")) != EOF) {
+	//MYSTUFF
+	int channel_to_jam = -1;
+	int do_follow_afh = 0;
+	int do_channel_jam = 0;
+	int cutoff = 0;
+	while ((opt=getopt(argc,argv,"a::r:hfF:npU:g:v::A:s:t:x:c:q:jJiI")) != EOF) {
 		switch(opt) {
 		case 'a':
 			if (optarg == NULL) {
@@ -178,6 +190,11 @@ int main(int argc, char *argv[])
 		case 'f':
 			do_follow = 1;
 			break;
+		//MYSTUFF
+		case 'F':
+			do_follow_afh = 1;
+			cutoff = atoi(optarg);
+			break;
 		case 'n':
 			do_no_follow = 1;
 			break;
@@ -186,6 +203,14 @@ int main(int argc, char *argv[])
 			break;
 		case 'U':
 			ubertooth_device = atoi(optarg);
+			break;
+		//MYSTUFF
+		case 'g':
+			do_channel_jam = 1;
+			channel_to_jam = atoi(optarg);
+			for (int i = 0; i < 6; ++i) {
+				mac_address[i] = 0xc8;
+			}
 			break;
 		case 'r':
 			if (!ut->h_pcapng_le) {
@@ -289,8 +314,9 @@ int main(int argc, char *argv[])
 	// cancel following on USR1
 	signal(SIGUSR1, cancel_follow_handler);
 
-	if (do_follow + do_no_follow + do_promisc > 1) {
-		printf("Error: must choose one -f, -n, or -p, pick one pal\n");
+	
+	if (do_follow + do_no_follow + do_promisc + do_follow_afh > 1) {
+		printf("Error: must choose one -f, -n, -p, or -F, pick one pal\n");
 		return 1;
 	}
 
@@ -311,7 +337,8 @@ int main(int argc, char *argv[])
 		}
 	}
 
-	if (do_follow || do_no_follow || do_promisc) {
+	//MYSTUFF-ADDED
+	if (do_follow || do_no_follow || do_promisc || do_follow_afh) {
 		usb_pkt_rx rx;
 
 		r = cmd_set_jam_mode(ut->devh, jam_mode);
@@ -321,7 +348,7 @@ int main(int argc, char *argv[])
 		}
 		cmd_set_modulation(ut->devh, MOD_BT_LOW_ENERGY);
 
-		if (do_follow || do_no_follow) {
+		if (do_follow || do_no_follow || do_follow_afh) {
 			u16 channel;
 			if (do_adv_index == 37)
 				channel = 2402;
@@ -330,13 +357,20 @@ int main(int argc, char *argv[])
 			else
 				channel = 2480;
 			cmd_set_channel(ut->devh, channel);
-			cmd_btle_sniffing(ut->devh, do_follow);
+			if (do_follow_afh){
+				printf("test\n");
+				cmd_btle_sniffing_afh(ut->devh, cutoff);
+			} else {
+				cmd_btle_sniffing(ut->devh, do_follow);
+			}
+			
 		} else {
 			cmd_btle_promisc(ut->devh);
 		}
 
 		// running can be changed by signal handler
 		while (running) {
+			printf("dudele\n");
 			if (cancel_follow) {
 				cmd_cancel_follow(ut->devh);
 				cancel_follow = 0;
@@ -394,9 +428,46 @@ int main(int argc, char *argv[])
 		cmd_btle_slave(ut->devh, mac_address);
 	}
 
+	//MYSTUFF
+	if (do_channel_jam){
+		if (channel_to_jam <0 || channel_to_jam > 39){
+			printf("Channel index must be between 0 and 39.\n");
+			usage();
+			return 1;
+		}
+		//cmd_jam_channel_mode(ut->devh, channel_to_jam);
+		u16 channel;
+		if (channel_to_jam == 37){
+			channel = 2402;
+		}
+		else if (channel_to_jam == 38){
+			channel = 2426;
+		}
+		else if (channel_to_jam == 39){
+			channel = 2480;
+		}
+		else if (channel_to_jam <= 10){
+			channel = 2404 + channel_to_jam * 2;
+		}
+		else {
+			channel = 2428 + (channel_to_jam - 11) * 2;
+		}
+		printf("Setting channel to frequency %d.\n", channel);
+		cmd_set_channel(ut->devh, channel);
+
+		// flags: LE Limited Discovery
+		uint8_t adv_data[] = { 0x02, 0x01, 0x05, 0x34, 0x56, 0x76, 0x23, 0x12, 0x79, 0x93, 0x56, 0x34, 0x23, 0x34, 0x56, 0x76, 0x23, 0x12, 0x79, 0x93, 0x56 };		
+		cmd_le_set_adv_data(ut->devh, adv_data, sizeof(adv_data));		
+		cmd_btle_jam(ut->devh, mac_address);
+		
+		}
+
+	//MYSTUFF-ADDED
 	if (!(do_follow || do_no_follow || do_promisc || do_get_aa || do_set_aa ||
-				do_crc >= 0 || do_slave_mode || do_target))
+				do_crc >= 0 || do_slave_mode || do_target || do_channel_jam || do_follow_afh)){
 		usage();
+
+	}
 
 	return 0;
 }

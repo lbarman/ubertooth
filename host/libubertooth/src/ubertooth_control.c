@@ -741,6 +741,24 @@ int cmd_btle_sniffing(struct libusb_device_handle* devh, uint8_t do_follow)
 	return 0;
 }
 
+//MYSTUFF
+int cmd_btle_sniffing_afh(struct libusb_device_handle* devh, uint8_t cutoff)
+{
+	int r;
+
+	r = libusb_control_transfer(devh, CTRL_OUT, UBERTOOTH_LE_SNIFFING_AFH, cutoff, 0,
+			NULL, 0, 1000);
+	if (r < 0) {
+		if (r == LIBUSB_ERROR_PIPE) {
+			fprintf(stderr, "control message unsupported\n");
+		} else {
+			show_libusb_error(r);
+		}
+		return r;
+	}
+	return 0;
+}
+
 int cmd_set_afh_map(struct libusb_device_handle* devh, uint8_t* afh_map)
 {
 	uint8_t buffer[LIBUSB_CONTROL_SETUP_SIZE+10];
@@ -995,6 +1013,43 @@ int cmd_set_jam_mode(struct libusb_device_handle* devh, int mode) {
 
 	return 0;
 }
+
+//MYSTUFF
+int cmd_jam_channel_mode(struct libusb_device_handle* devh, int channel) {
+	int r;
+	r = libusb_control_transfer(devh, CTRL_OUT, UBERTOOTH_JAM_CHANNEL_MODE, channel, 0,
+			NULL, 0, 1000);
+	if (r < 0) {
+		if (r == LIBUSB_ERROR_PIPE) {
+			fprintf(stderr, "This is channel jam: control message unsupported\n");
+		} else {
+			show_libusb_error(r);
+		}
+		return r;
+	}
+
+	return 0;
+}
+
+//MYSTUFF
+int cmd_btle_jam(struct libusb_device_handle* devh, u8 *mac_address)
+{
+	int r;
+
+	r = libusb_control_transfer(devh, CTRL_OUT, UBERTOOTH_JAM_CHANNEL_MODE, 0, 0,
+			mac_address, 6, 1000);
+	if (r < 0) {
+		if (r == LIBUSB_ERROR_PIPE) {
+			fprintf(stderr, "control message unsupported\n");
+		} else {
+			show_libusb_error(r);
+		}
+		return r;
+	} 
+	return 0;
+}
+
+
 
 int cmd_ego(struct libusb_device_handle* devh, int mode)
 {
